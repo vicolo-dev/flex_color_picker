@@ -164,9 +164,6 @@ class _ColorCodeFieldState extends State<ColorCodeField> {
             ? Colors.white
             : Colors.black;
 
-    final Color fieldBorder =
-        isLight ? Colors.black.withAlpha(33) : Colors.white.withAlpha(55);
-
     // Set the default text style to bodyMedium if not given.
     TextStyle effectiveStyle = widget.textStyle ??
         Theme.of(context).textTheme.bodyMedium ??
@@ -186,7 +183,7 @@ class _ColorCodeFieldState extends State<ColorCodeField> {
     final double fontSize = effectiveStyle.fontSize ?? 14.0;
     final double iconSize = fontSize * 1.1;
     final double borderRadius = fontSize * 1.2;
-    final double fieldWidth = fontSize * 10;
+    final double fieldWidth = fontSize * 11;
 
     return SizedBox(
       width: fieldWidth,
@@ -241,42 +238,6 @@ class _ColorCodeFieldState extends State<ColorCodeField> {
               contentPadding: EdgeInsetsDirectional.only(start: fontSize),
               prefixText: _editColorPrefix,
               prefixStyle: effectivePrefixStyle,
-              filled: true,
-              fillColor: fieldBackground,
-              border: OutlineInputBorder(
-                borderSide: BorderSide.none,
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: fieldBorder,
-                ),
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: fieldBorder,
-                ),
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              disabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: fieldBorder,
-                ),
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: fieldBorder,
-                ),
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: fieldBorder,
-                ),
-                borderRadius: BorderRadius.circular(borderRadius),
-              ),
             ),
             //
             onChanged: (String textColor) {

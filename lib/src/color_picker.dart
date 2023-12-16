@@ -156,6 +156,7 @@ class ColorPicker extends StatefulWidget {
       ColorPickerType.custom: _selectCustomLabel,
       ColorPickerType.wheel: _selectWheelAnyLabel,
     },
+    this.customPickerSelectBuilder,
     // Custom color swatches and name map for the custom color swatches.
     this.customColorSwatchesAndNames = const <ColorSwatch<Object>, String>{},
     //
@@ -664,6 +665,13 @@ class ColorPicker extends StatefulWidget {
   ///  * [ColorPickerType.custom] : 'Custom'
   ///  * [ColorPickerType.wheel] : 'Wheel'
   final Map<ColorPickerType, String> pickerTypeLabels;
+
+  final Widget Function(
+    Map<ColorPickerType, bool>,
+    Map<ColorPickerType, String>,
+    ColorPickerType,
+    ValueChanged<ColorPickerType>,
+  )? customPickerSelectBuilder;
 
   /// Color swatch to name map, with custom swatches and their names.
   ///
@@ -1550,6 +1558,28 @@ class _ColorPickerState extends State<ColorPicker> {
     final bool autoFocus = widget.copyPasteBehavior.autoFocus &&
         (widget.copyPasteBehavior.ctrlC || widget.copyPasteBehavior.ctrlV);
 
+    void onPickerChanged(ColorPickerType value) {
+      // If there is no color in the picker that will grab
+      // focus when we move to the picker, then the picker
+      // selector itself will keep focus, and kick the key
+      // events (copy/paste) to the handler, we can thus use
+      // CTRL-C/V also when picker selector has focus.
+      _pickerFocusNode.requestFocus();
+      setState(() {
+        _activePicker = value;
+        // If there is a color indicator, it will grab focus.
+        _selectedShouldFocus = true;
+        // If we are on the wheel no shades selection is not
+        // enabled, then the wheel will grab the focus.
+        if (_activePicker == ColorPickerType.wheel &&
+            !widget.enableShadesSelection &&
+            !widget.enableTonalPalette) {
+          _wheelShouldFocus = true;
+        }
+        _updateActiveSwatch();
+      });
+    }
+
     // We start with a RawKeyboardListener that is used to handle keyboard
     // copy and paste events.
     return RawKeyboardListener(
@@ -1666,35 +1696,18 @@ class _ColorPickerState extends State<ColorPicker> {
                     _handleKeyEvent(event);
                     return KeyEventResult.ignored;
                   },
-                  child: SelectPicker(
-                    pickers: _pickers,
-                    pickerLabels: _pickerLabels,
-                    picker: _activePicker,
-                    onPickerChanged: (ColorPickerType value) {
-                      // If there is no color in the picker that will grab
-                      // focus when we move to the picker, then the picker
-                      // selector itself will keep focus, and kick the key
-                      // events (copy/paste) to the handler, we can thus use
-                      // CTRL-C/V also when picker selector has focus.
-                      _pickerFocusNode.requestFocus();
-                      setState(() {
-                        _activePicker = value;
-                        // If there is a color indicator, it will grab focus.
-                        _selectedShouldFocus = true;
-                        // If we are on the wheel no shades selection is not
-                        // enabled, then the wheel will grab the focus.
-                        if (_activePicker == ColorPickerType.wheel &&
-                            !widget.enableShadesSelection &&
-                            !widget.enableTonalPalette) {
-                          _wheelShouldFocus = true;
-                        }
-                        _updateActiveSwatch();
-                      });
-                    },
-                    thumbColor: widget.selectedPickerTypeColor,
-                    textStyle: widget.pickerTypeTextStyle,
-                    columnSpacing: widget.columnSpacing,
-                  ),
+                  child: widget.customPickerSelectBuilder != null
+                      ? widget.customPickerSelectBuilder!(_pickers,
+                          _pickerLabels, _activePicker, onPickerChanged)
+                      : SelectPicker(
+                          pickers: _pickers,
+                          pickerLabels: _pickerLabels,
+                          picker: _activePicker,
+                          onPickerChanged: onPickerChanged,
+                          thumbColor: widget.selectedPickerTypeColor,
+                          textStyle: widget.pickerTypeTextStyle,
+                          columnSpacing: widget.columnSpacing,
+                        ),
                 ),
               // Add a tiny bit of extra hard coded space after the picker
               // type selector if there was one.
@@ -1722,6 +1735,67 @@ class _ColorPickerState extends State<ColorPicker> {
                   selectedColorIcon: widget.selectedColorIcon,
                   selectedRequestsFocus: _selectedShouldFocus,
                 ),
+
+              if ((widget.showColorCode || widget.showColorValue) &&
+                  _activePicker == ColorPickerType.wheel)
+                Padding(
+                  padding: EdgeInsets.only(bottom: widget.columnSpacing),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    runAlignment: WrapAlignment.center,
+                    alignment: WrapAlignment.center,
+                    children: <Widget>[
+                      // Show the color code view and edit field, if enabled.
+                      if (widget.showColorCode)
+                        ColorCodeField(
+                          color: _selectedColor,
+                          readOnly: _activePicker != ColorPickerType.wheel ||
+                              widget.colorCodeReadOnly,
+                          textStyle: widget.colorCodeTextStyle,
+                          prefixStyle: widget.colorCodePrefixStyle,
+                          colorCodeHasColor: widget.colorCodeHasColor,
+                          enableTooltips: widget.enableTooltips,
+                          shouldUpdate: _editShouldUpdate,
+                          onColorChanged: (Color color) {
+                            widget.onColorChangeStart?.call(_selectedColor);
+                            setState(() {
+                              _selectedColor = color.withOpacity(_opacity);
+                              // Color changed outside wheel picker, when the
+                              // code was edited, the wheel should update.
+                              _wheelShouldUpdate = true;
+                              _editShouldUpdate = false;
+                              _tonalOperated = false;
+                              _updateActiveSwatch();
+                            });
+                            widget.onColorChanged(_selectedColor);
+                            widget.onColorChangeEnd?.call(_selectedColor);
+                            _addToRecentColors(color);
+                          },
+                          onEditFocused: (bool editInFocus) {
+                            setState(() {
+                              _editCodeFocused = editInFocus;
+                              if (_editCodeFocused) {
+                                _selectedShouldFocus = false;
+                                _wheelShouldFocus = false;
+                              }
+                            });
+                          },
+                          toolIcons: widget.actionButtons,
+                          copyPasteBehavior: widget.copyPasteBehavior,
+                        ),
+                      // If we show both hex code and int value, add some
+                      // hardcoded horizontal space between them.
+                      if (widget.showColorCode && widget.showColorValue)
+                        const SizedBox(width: 8),
+                      if (widget.showColorValue)
+                        SelectableText(
+                          _selectedColor.value.toString(),
+                          style: effectiveCodeStyle,
+                        ),
+                    ],
+                  ),
+                ),
+
               // This is the wheel case, draw the custom ColorWheelPicker.
               if (_activePicker == ColorPickerType.wheel)
                 Padding(
@@ -1786,7 +1860,8 @@ class _ColorPickerState extends State<ColorPicker> {
                   child: widget.wheelSubheading,
                 ),
               // Draw the shade colors for the selected main color.
-              if (widget.enableShadesSelection)
+              if (widget.enableShadesSelection &&
+                  _activePicker != ColorPickerType.wheel)
                 ShadeColors(
                   spacing: widget.spacing,
                   runSpacing: widget.runSpacing,
@@ -1950,64 +2025,6 @@ class _ColorPickerState extends State<ColorPicker> {
               // Wrap, they will be on same row nicely if there is room enough
               // but also wrap to two rows when so needed when both are
               // shown at the same and they don't fit on one row.
-              if (widget.showColorCode || widget.showColorValue)
-                Padding(
-                  padding: EdgeInsets.only(bottom: widget.columnSpacing),
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    runAlignment: WrapAlignment.center,
-                    alignment: WrapAlignment.center,
-                    children: <Widget>[
-                      // Show the color code view and edit field, if enabled.
-                      if (widget.showColorCode)
-                        ColorCodeField(
-                          color: _selectedColor,
-                          readOnly: _activePicker != ColorPickerType.wheel ||
-                              widget.colorCodeReadOnly,
-                          textStyle: widget.colorCodeTextStyle,
-                          prefixStyle: widget.colorCodePrefixStyle,
-                          colorCodeHasColor: widget.colorCodeHasColor,
-                          enableTooltips: widget.enableTooltips,
-                          shouldUpdate: _editShouldUpdate,
-                          onColorChanged: (Color color) {
-                            widget.onColorChangeStart?.call(_selectedColor);
-                            setState(() {
-                              _selectedColor = color.withOpacity(_opacity);
-                              // Color changed outside wheel picker, when the
-                              // code was edited, the wheel should update.
-                              _wheelShouldUpdate = true;
-                              _editShouldUpdate = false;
-                              _tonalOperated = false;
-                              _updateActiveSwatch();
-                            });
-                            widget.onColorChanged(_selectedColor);
-                            widget.onColorChangeEnd?.call(_selectedColor);
-                            _addToRecentColors(color);
-                          },
-                          onEditFocused: (bool editInFocus) {
-                            setState(() {
-                              _editCodeFocused = editInFocus;
-                              if (_editCodeFocused) {
-                                _selectedShouldFocus = false;
-                                _wheelShouldFocus = false;
-                              }
-                            });
-                          },
-                          toolIcons: widget.actionButtons,
-                          copyPasteBehavior: widget.copyPasteBehavior,
-                        ),
-                      // If we show both hex code and int value, add some
-                      // hardcoded horizontal space between them.
-                      if (widget.showColorCode && widget.showColorValue)
-                        const SizedBox(width: 8),
-                      if (widget.showColorValue)
-                        SelectableText(
-                          _selectedColor.value.toString(),
-                          style: effectiveCodeStyle,
-                        ),
-                    ],
-                  ),
-                ),
               // Show the sub-heading for recent colors.
               if (widget.recentColorsSubheading != null &&
                   widget.showRecentColors)
